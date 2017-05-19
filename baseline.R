@@ -1,5 +1,4 @@
 ############ Prereqs ############
-#setwd("~/gdrive/MetabClass")
 args<-commandArgs(trailingOnly=TRUE)
 iter<-args[1]
 
