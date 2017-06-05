@@ -8,6 +8,7 @@ library(randomForest)
 library(e1071)
 library(neuralnet)
 library(caret)
+library(class)
 library(cvTools)
 library(qvalue)
 library(dplyr)
@@ -66,6 +67,50 @@ testSig<-test[,colnames(test)%in%gr$metab]
 
 cvF<-cvFolds(n=nrow(train),K=5)
 
+############ Naive Bayes ############
+NB<-naiveBayes(train,phe)
+NBSig<-naiveBayes(trainSig,phe)
+
+############ k-NN ############
+# Full:
+knnP<-data.frame(nn=seq(1:20),CELoss=NA)
+for(j in 1:nrow(knnP))
+{
+  CELoss<-c()
+  for(i in 1:5)
+  {
+    KNN<-knn(train=train[cvF$subsets[cvF$which!=i],],test=train[cvF$subsets[cvF$which==i],],
+             cl=phe[cvF$subsets[cvF$which!=i]],k=knnP$nn[j],prob=TRUE)
+    probs<-attr(KNN,"prob")
+    probs<-log2(probs*model.matrix(~KNN-1,data.frame(phe=KNN)))
+    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
+                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+  }
+  knnP$CELoss[j]<-mean(CELoss)
+}
+knnNN<-knnP$nn[which.min(knnP$CELoss)]
+KNN<-knn(train,test,cl=phe,k=knnNN,prob=TRUE)
+
+# Filtered
+for(j in 1:nrow(knnP))
+{
+  CELoss<-c()
+  for(i in 1:5)
+  {
+    KNNSig<-knn(train=trainSig[cvF$subsets[cvF$which!=i],],test=trainSig[cvF$subsets[cvF$which==i],],
+                cl=phe[cvF$subsets[cvF$which!=i]],k=knnP$nn[j],prob=TRUE)
+    probs<-attr(KNNSig,"prob")
+    probs<-log2(probs*model.matrix(~KNNSig-1,data.frame(phe=KNNSig)))
+    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
+                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+  }
+  knnP$CELoss[j]<-mean(CELoss)
+}
+knnNN<-knnP$nn[which.min(knnP$CELoss)]
+KNNSig<-knn(train,test,cl=phe,k=knnNN,prob=TRUE)
+
 ############ PLS-DA ############
 Plsda<-plsda(train,phe,ncomp=2)
 predPlsda<-predict(Plsda,newdata=test,type="prob")
@@ -75,7 +120,6 @@ predPlsdaSig<-predict(PlsdaSig,newdata=testSig,type="prob")
 
 ############ SPLS-DA ############
 # Full:
-# LOH Fix loss
 splsdaP<-data.frame(eta=seq(.1,.9,.1),CELoss=NA)
 for(j in 1:nrow(splsdaP))
 {

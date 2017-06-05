@@ -1,5 +1,4 @@
 ############ Prereqs ############
-# Need to add naive bayes and k-nn
 args<-commandArgs(trailingOnly=TRUE)
 iter<-args[1]
 
@@ -9,6 +8,7 @@ library(randomForest)
 library(e1071)
 library(neuralnet)
 library(caret)
+library(class)
 library(cvTools)
 library(qvalue)
 library(dplyr)
@@ -67,16 +67,93 @@ testSig<-test[,colnames(test)%in%gr$metab]
 
 cvF<-cvFolds(n=nrow(train),K=5)
 
+############ Naive Bayes ############
+NB<-naiveBayes(train,phe)
+NBSig<-naiveBayes(trainSig,phe)
+
+############ k-NN ############
+# Full:
+knnP<-data.frame(nn=seq(1:20),CELoss=NA)
+for(j in 1:nrow(knnP))
+{
+  CELoss<-c()
+  for(i in 1:5)
+  {
+    KNN<-knn(train=train[cvF$subsets[cvF$which!=i],],test=train[cvF$subsets[cvF$which==i],],
+             cl=phe[cvF$subsets[cvF$which!=i]],k=knnP$nn[j],prob=TRUE)
+    probs<-attr(KNN,"prob")
+    probs<-log2(probs*model.matrix(~KNN-1,data.frame(phe=KNN)))
+    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
+                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+  }
+  knnP$CELoss[j]<-mean(CELoss)
+}
+knnNN<-knnP$nn[which.min(knnP$CELoss)]
+KNN<-knn(train,test,cl=phe,k=knnNN,prob=TRUE)
+
+# Filtered
+for(j in 1:nrow(knnP))
+{
+  CELoss<-c()
+  for(i in 1:5)
+  {
+    KNNSig<-knn(train=trainSig[cvF$subsets[cvF$which!=i],],test=trainSig[cvF$subsets[cvF$which==i],],
+             cl=phe[cvF$subsets[cvF$which!=i]],k=knnP$nn[j],prob=TRUE)
+    probs<-attr(KNNSig,"prob")
+    probs<-log2(probs*model.matrix(~KNNSig-1,data.frame(phe=KNNSig)))
+    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
+                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+  }
+  knnP$CELoss[j]<-mean(CELoss)
+}
+knnNN<-knnP$nn[which.min(knnP$CELoss)]
+KNNSig<-knn(train,test,cl=phe,k=knnNN,prob=TRUE)
+
 ############ PLS-DA ############
-Plsda<-plsda(train,phe,ncomp=2)
+# Full
+plsdaP<-data.frame(nComp=seq(1:25),CELoss=NA)
+for(j in 1:nrow(plsdaP))
+{
+  CELoss<-c()
+  for(i in 1:5)
+  {
+    Plsda<-plsda(train[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
+                ncomp=plsdaP$nComp[j])
+    probs<-log2(predict(Plsda,train[cvF$subsets[cvF$which==i],],type="prob")[,,1])
+    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
+                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+  }
+  plsdaP$CELoss[j]<-mean(CELoss)
+}
+plsdaNComp<-plsdaP$nComp[which.min(plsdaP$CELoss)]
+Plsda<-plsda(train,phe,ncomp=plsdaNComp)
 predPlsda<-predict(Plsda,newdata=test,type="prob")
 
-PlsdaSig<-plsda(trainSig,phe,ncomp=2)
+# Filtered
+plsdaP<-data.frame(nComp=seq(1:25),CELoss=NA)
+for(j in 1:nrow(plsdaP))
+{
+  CELoss<-c()
+  for(i in 1:5)
+  {
+    PlsdaSig<-plsda(trainSig[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
+                 ncomp=plsdaP$nComp[j])
+    probs<-log2(predict(PlsdaSig,trainSig[cvF$subsets[cvF$which==i],],type="prob")[,,1])
+    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
+                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+  }
+  plsdaP$CELoss[j]<-mean(CELoss)
+}
+plsdaNComp<-plsdaP$nComp[which.min(plsdaP$CELoss)]
+PlsdaSig<-plsda(trainSig,phe,ncomp=plsdaNComp)
 predPlsdaSig<-predict(PlsdaSig,newdata=testSig,type="prob")
 
 ############ SPLS-DA ############
 # Full:
-# LOH Fix loss
 splsdaP<-data.frame(eta=seq(.1,.9,.1),CELoss=NA)
 for(j in 1:nrow(splsdaP))
 {
