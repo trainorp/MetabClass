@@ -1,4 +1,5 @@
 ############ Prereqs ############
+# Need to add naive bayes and k-nn
 args<-commandArgs(trailingOnly=TRUE)
 iter<-args[1]
 
