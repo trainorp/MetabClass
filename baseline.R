@@ -154,24 +154,24 @@ predPlsdaSig<-predict(PlsdaSig,newdata=testSig,type="prob")
 
 ############ SPLS-DA ############
 # Full:
-splsdaP<-data.frame(eta=seq(.1,.9,.1),CELoss=NA)
+splsdaP<-expand.grid(nComp=seq(1:15),eta=seq(.1,.9,.1),CELoss=NA)
 for(j in 1:nrow(splsdaP))
 {
   CELoss<-c()
   for(i in 1:5)
   {
-    Splsda<-splsda(train[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
-                   eta=splsdaP$eta[j],K=2)
+    Splsda<-caret:::splsda(train[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
+                   eta=splsdaP$eta[j],K=splsdaP$nComp[j])
     probs<-log2(predict(Splsda,train[cvF$subsets[cvF$which==i],],type="prob"))
     probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
   }
   splsdaP$CELoss[j]<-mean(CELoss)
-  print(j)
 }
 selEta<-splsdaP$eta[which.min(splsdaP$CELoss)]
-Splsda<-splsda(train,phe,eta=selEta,K=2)
+selNComp<-splsdaP$nComp[which.min(splsdaP$CELoss)]
+Splsda<-splsda(train,phe,eta=selEta,K=selNComp)
 
 # Filtered:
 for(j in 1:nrow(splsdaP))
@@ -179,18 +179,18 @@ for(j in 1:nrow(splsdaP))
   CELoss<-c()
   for(i in 1:5)
   {
-    SplsdaSig<-splsda(trainSig[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
-                   eta=splsdaP$eta[j],K=2)
+    SplsdaSig<-caret:::splsda(trainSig[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
+                   eta=splsdaP$eta[j],K=splsdaP$nComp[j])
     probs<-log2(predict(SplsdaSig,trainSig[cvF$subsets[cvF$which==i],],type="prob"))
     probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
   }
   splsdaP$CELoss[j]<-mean(CELoss)
-  print(j)
 }
 selEta<-splsdaP$eta[which.min(splsdaP$CELoss)]
-SplsdaSig<-splsda(trainSig,phe,eta=selEta,K=2)
+selNComp<-splsdaP$nComp[which.min(splsdaP$CELoss)]
+SplsdaSig<-splsda(trainSig,phe,eta=selEta,K=selNComp)
 
 ############ Random Forest ############
 # Full:
@@ -392,7 +392,7 @@ for(j in 1:nrow(NNP))
   NNP$CELoss[j]<-mean(CELoss)
 }
 NNP$nodes<-NNP$nodes*NNP$layers
-#plot(NNP$nodes[NNP$layers==1],NNP$CELoss[NNP$layers==1],type="p",ylim=c(0,10.0))
+#plot(NNP$nodes[NNP$layers==1],NNP$CELoss[NNP$layers==1],type="p",ylim=c(0,1.6))
 #points(NNP$nodes[NNP$layers==2],NNP$CELoss[NNP$layers==2],type="p",col="blue")
 lSmoothDf<-c()
 for(i in 1:2)
@@ -408,7 +408,22 @@ nnetSig<-neuralnet(tempForm,data=DfTrainSig,act.fct="logistic",err.fct="ce",
                 rep=1,threshold=.00001)
 
 ############ Full Comparison ############
-res<-rbind(data.frame(method="plsda",predict(Plsda,test,type="prob")[,,1]),
+# kNN:
+knnProbs<-attr(KNN,"prob")
+knnProbs<-data.frame(method="kNN",knnProbs*model.matrix(~KNN-1,data.frame(phe=KNN)))
+names(knnProbs)<-gsub("KNN","",names(knnProbs))
+
+# kNN Sig:
+knnSigProbs<-attr(KNNSig,"prob")
+knnSigProbs<-data.frame(method="kNNSig",knnSigProbs*model.matrix(~KNNSig-1,data.frame(phe=KNNSig)))
+names(knnSigProbs)<-gsub("KNNSig","",names(knnProbs))
+
+knnRes<-rbind(knnProbs,knnSigProbs)
+
+res<-rbind(knnRes,
+data.frame(method="NB",predict(NB,test,type="raw")),
+data.frame(method="NBSig",predict(NBSig,test,type="raw")),
+data.frame(method="plsda",predict(Plsda,test,type="prob")[,,1]),
 data.frame(method="plsdaSig",predict(PlsdaSig,testSig,type="prob")[,,1]),
 data.frame(method="splsda",predict(Splsda,test,type="prob")),
 data.frame(method="splsdaSig",predict(SplsdaSig,testSig,type="prob")),
@@ -445,7 +460,7 @@ for(method in unique(res$method))
 
 # Misclassification:
 res$pred<-levels(phe)[apply(res %>% select(-method),1,which.max)]
-res$act<-rep(phe,times=10)
+res$act<-rep(phe,times=14)
 res$mis<-as.numeric(res$pred!=res$act)
 misRes<-res %>% group_by(method) %>% summarize(mis=mean(mis))
 
