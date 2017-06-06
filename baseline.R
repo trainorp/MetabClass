@@ -210,7 +210,6 @@ for(j in 1:nrow(rFmtry))
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
   }
   rFmtry$CELoss[j]<-mean(CELoss)
-  print(j)
 }
 lSmooth<-ksmooth(x=rFmtry$mtry,y=rFmtry$CELoss,bandwidth=150)
 selMtry<-round(lSmooth$x[which.min(lSmooth$y)])
@@ -232,7 +231,6 @@ for(j in 1:nrow(rFmtry))
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
   }
   rFmtry$CELoss[j]<-mean(CELoss)
-  print(j)
 }
 lSmooth<-ksmooth(x=rFmtry$mtry,y=rFmtry$CELoss,bandwidth=10)
 selMtry<-round(lSmooth$x[which.min(lSmooth$y)])
@@ -303,7 +301,7 @@ for(j in 1:nrow(NNP))
   CELoss<-c()
   for(i in 1:5)
   {
-    cat("i: ",i," structure:",rep(NNP$nodes[j],times=NNP$layers[j]),"\n")
+    cat("Full i: ",i," structure:",rep(NNP$nodes[j],times=NNP$layers[j]),"\n")
     tempDfTrain<-as.data.frame(cbind(mmPhe[cvF$subsets[cvF$which!=i],],
                                 train[cvF$subsets[cvF$which!=i],]))
     tempDfTest<-as.data.frame(cbind(mmPhe[cvF$subsets[cvF$which==i],],
@@ -359,7 +357,7 @@ for(j in 1:nrow(NNP))
   CELoss<-c()
   for(i in 1:5)
   {
-    cat("i: ",i," structure:",rep(NNP$nodes[j],times=NNP$layers[j]),"\n")
+    cat("Filtered i: ",i," structure:",rep(NNP$nodes[j],times=NNP$layers[j]),"\n")
     tempDfTrain<-as.data.frame(cbind(mmPhe[cvF$subsets[cvF$which!=i],],
                                      trainSig[cvF$subsets[cvF$which!=i],]))
     tempDfTest<-as.data.frame(cbind(mmPhe[cvF$subsets[cvF$which==i],],
