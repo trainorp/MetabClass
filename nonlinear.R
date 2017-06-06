@@ -485,4 +485,4 @@ misRes<-res %>% group_by(method) %>% summarize(mis=mean(mis))
 
 res<-ceLoss %>% left_join(misRes,by="method")
 res$selected<-nrow(gr)
-save(res,file=paste0("res",iter,".RData"))
+save(res,file=paste0("NLres",iter,".RData"))
