@@ -14,10 +14,17 @@ library(qvalue)
 library(dplyr)
 library(tidyr)
 
-phe<-factor(c(rep("phe1",20),rep("phe2",20),rep("phe3",20)))
+# Phenotype distribution:
+phePrior<-MCMCpack::rdirichlet(1,c(5,5,5))
+pheDistribution<-c(rmultinom(1,60,prob=phePrior))
+pheDN<-cumsum(2*pheDistribution)
+
+phe<-factor(c(rep("phe1",pheDistribution[1]),rep("phe2",pheDistribution[2]),
+              rep("phe3",pheDistribution[3])))
 mmPhe<-model.matrix(~phe-1,as.data.frame(phe))
 eta<-.01
 
+# Pathways differentially abundant
 perBlocksPhe2<-sample(1:5,1)
 blockMeansPhe2<-rexp(perBlocksPhe2,rate=1/2)*sample(c(-1,1),perBlocksPhe2,replace=TRUE)
 perBlocksPhe3<-sample(1:5,1)
@@ -35,7 +42,8 @@ permPhe2<-data.frame(start=40*(whichBlocksPhe2-1)+1)
 permPhe2$end<-permPhe2$start+39
 for(i in 1:perBlocksPhe2)
 {
-  metabs[41:80,permPhe2$start[i]:permPhe2$end[i]]<-mvrnorm(n=40,mu=rep(blockMeansPhe2[i],40),Sigma=sigmas[[whichBlocksPhe2[i]]])
+  metabs[(pheDN[1]+1):(pheDN[2]),permPhe2$start[i]:permPhe2$end[i]]<-
+    mvrnorm(n=2*pheDistribution[2],mu=rep(blockMeansPhe2[i],40),Sigma=sigmas[[whichBlocksPhe2[i]]])
 }
 
 #Phe 3 data:
@@ -44,7 +52,42 @@ permPhe3<-data.frame(start=40*(whichBlocksPhe3-1)+1)
 permPhe3$end<-permPhe3$start+39
 for(i in 1:perBlocksPhe3)
 {
-  metabs[81:120,permPhe3$start[i]:permPhe3$end[i]]<-mvrnorm(n=40,mu=rep(blockMeansPhe3[i],40),Sigma=sigmas[[whichBlocksPhe3[i]]])
+  metabs[(pheDN[2]+1):(pheDN[3]),permPhe3$start[i]:permPhe3$end[i]]<-
+    mvrnorm(n=2*pheDistribution[3],mu=rep(blockMeansPhe3[i],40),Sigma=sigmas[[whichBlocksPhe3[i]]])
+}
+
+# Add outlier clusters within replicate
+outliers<-rpois(120,1)
+for(i in 1:length(outliers))
+{
+  if(outliers[i]>0L)
+  {
+    outClusts<-sample(1:25,outliers[i])
+    for(outClust in outClusts)
+    {
+      clustMeans<-mean(apply(metabs[,((outClust-1)*40+1):(outClust*40)],2,mean))
+      clustVar<-mean(apply(metabs[,((outClust-1)*40+1):(outClust*40)],2,sd))
+      # Add cluster level outlier:
+      metabs[i,((outClust-1)*40+1):(outClust*40)]<-
+        mvrnorm(n=1,mu=rep(clustMeans+2*sample(c(-1,1),1)*clustVar,40),Sigma=sigmas[[outClust]])
+    } 
+  }
+}
+
+# Add outlier not within clusters:
+outliers<-rpois(120,2)
+for(i in 1:length(outliers))
+{
+  if(outliers[i]>0L)
+  {
+    outs<-sample(1:1000,outliers[i])
+    for(out in outs)
+    {
+      metabMean<-mean(metabs[,out])
+      metabSD<-sd(metabs[,out])
+      metabs[i,out]<-rnorm(n=1,mean=metabMean+sample(c(-1,1),1)*2*metabSD)
+    }
+  }
 }
 
 # Introduce non-normal error distributions:
@@ -68,16 +111,33 @@ for(i in 1:25)
   }
 }
 
-rownames(metabs)<-c(paste("phe1",1:40,sep="."),paste("phe2",1:40,sep="."),paste("phe3",1:40,sep="."))
-train<-metabs[c(1:20,41:60,81:100),]
-test<-metabs[-c(1:20,41:60,81:100),]
+# Not detected missing values:
+metabs[metabs<quantile(metabs,rbeta(1,shape1=1,shape2=19))]<-NA
+minImp<-function(x)
+{
+  minX<-min(x[!is.na(x)])
+  x[is.na(x)]<-minX
+  return(x)
+}
+metabs<-apply(metabs,2,FUN=minImp)
+
+rownames(metabs)<-c(paste(rep("phe1",2*pheDistribution[1]),1:(2*pheDistribution[1]),sep="."),
+  paste(rep("phe2",2*pheDistribution[2]),1:(2*pheDistribution[2]),sep="."),
+  paste(rep("phe3",2*pheDistribution[3]),1:(2*pheDistribution[3]),sep="."))
+
+trainRows<-c(paste(rep("phe1",pheDistribution[1]),1:(pheDistribution[1]),sep="."),
+  paste(rep("phe2",pheDistribution[2]),1:(pheDistribution[2]),sep="."),
+  paste(rep("phe3",pheDistribution[3]),1:(pheDistribution[3]),sep="."))
+
+train<-metabs[rownames(metabs) %in% trainRows,]
+test<-metabs[!rownames(metabs) %in% trainRows,]
 
 # Significance filtering
 varNames<-colnames(train)
 pFun<-function(x)
 {
-  form1<-as.formula(paste(x,"factor(phe)",sep="~"))
-  return(TukeyHSD(aov(form1,data=as.data.frame(cbind(phe,train))))[[1]][,"p adj"])
+  return(na.omit(
+    c(pairwise.wilcox.test(x=train[,x],g=phe,p.adjust.method="none")$p.value)))
 }
 gr<-do.call("rbind",lapply(varNames,pFun))
 gr<-data.frame(sig=apply(gr,1,function(x) x[1]<.025 | x[2]<.025 | x[3]<.025))
