@@ -105,9 +105,9 @@ for(i in 1:25)
     for(j in 1:40)
     {
       kk<-(i-1)*40+j
-      metabs[,kk]<-fun1(ecdf(metabs[,kk])(metabs[,kk]),alpha,kappa)
+      nonNormReplace<-fun1(ecdf(metabs[,kk])(metabs[,kk]),alpha,kappa)
+      metabs[,kk]<-nonNormReplace
     }
-    #hist(fun1(quants,alpha,kappa))
   }
 }
 
@@ -545,4 +545,7 @@ misRes<-res %>% group_by(method) %>% summarize(mis=mean(mis))
 
 res<-ceLoss %>% left_join(misRes,by="method")
 res$selected<-nrow(gr)
+res$phe1N<-pheDistribution[1]
+res$phe2N<-pheDistribution[2]
+res$phe3N<-pheDistribution[3]
 save(res,file=paste0("NLres",iter,".RData"))
