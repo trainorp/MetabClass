@@ -104,7 +104,7 @@ for(j in 1:nrow(knnP))
              cl=phe[cvF$subsets[cvF$which!=i]],k=knnP$nn[j],prob=TRUE)
     probs<-attr(KNN,"prob")
     probs<-log2(probs*model.matrix(~KNN-1,data.frame(phe=KNN)))
-    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
   }
@@ -123,7 +123,7 @@ for(j in 1:nrow(knnP))
                 cl=phe[cvF$subsets[cvF$which!=i]],k=knnP$nn[j],prob=TRUE)
     probs<-attr(KNNSig,"prob")
     probs<-log2(probs*model.matrix(~KNNSig-1,data.frame(phe=KNNSig)))
-    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
   }
@@ -143,7 +143,7 @@ for(j in 1:nrow(plsdaP))
     Plsda<-plsda(train[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
                  ncomp=plsdaP$nComp[j])
     probs<-log2(predict(Plsda,train[cvF$subsets[cvF$which==i],],type="prob")[,,1])
-    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
   }
@@ -163,7 +163,7 @@ for(j in 1:nrow(plsdaP))
     PlsdaSig<-plsda(trainSig[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
                     ncomp=plsdaP$nComp[j])
     probs<-log2(predict(PlsdaSig,trainSig[cvF$subsets[cvF$which==i],],type="prob")[,,1])
-    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
   }
@@ -184,7 +184,7 @@ for(j in 1:nrow(splsdaP))
     Splsda<-caret:::splsda(train[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
                            eta=splsdaP$eta[j],K=splsdaP$nComp[j])
     probs<-log2(predict(Splsda,train[cvF$subsets[cvF$which==i],],type="prob"))
-    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
   }
@@ -203,7 +203,7 @@ for(j in 1:nrow(splsdaP))
     SplsdaSig<-caret:::splsda(trainSig[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
                               eta=splsdaP$eta[j],K=splsdaP$nComp[j])
     probs<-log2(predict(SplsdaSig,trainSig[cvF$subsets[cvF$which==i],],type="prob"))
-    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
   }
@@ -225,7 +225,7 @@ for(j in 1:nrow(rFmtry))
     rF<-randomForest(train[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
                      mtry=rFmtry$mtry[j])
     probs<-log2(predict(rF,train[cvF$subsets[cvF$which==i],],type="prob"))
-    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    probs[is.infinite(probs)]<-log2(1e-64)
     probs<-probs[,levels(phe)]
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
@@ -246,7 +246,7 @@ for(j in 1:nrow(rFmtry))
     rFSig<-randomForest(trainSig[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
                         mtry=rFmtry$mtry[j])
     probs<-log2(predict(rFSig,trainSig[cvF$subsets[cvF$which==i],],type="prob"))
-    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    probs[is.infinite(probs)]<-log2(1e-64)
     probs<-probs[,levels(phe)]
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
@@ -268,7 +268,7 @@ for(j in 1:nrow(svmP))
     SVM<-svm(train[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
              gamma=svmP$gamma[j],kernel="radial",probability=TRUE)
     probs<-log2(attr(predict(SVM,train[cvF$subsets[cvF$which==i],],probability=TRUE),"probabilities"))
-    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    probs[is.infinite(probs)]<-log2(1e-64)
     probs<-probs[,levels(phe)]
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
@@ -292,7 +292,7 @@ for(j in 1:nrow(svmP))
     SVMSig<-svm(trainSig[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
                 gamma=svmP$gamma[j],kernel="radial",probability=TRUE)
     probs<-log2(attr(predict(SVMSig,trainSig[cvF$subsets[cvF$which==i],],probability=TRUE),"probabilities"))
-    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    probs[is.infinite(probs)]<-log2(1e-64)
     probs<-probs[,levels(phe)]
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
@@ -348,7 +348,7 @@ for(j in 1:nrow(NNP))
       )
     }
     probs<-log2(t(apply(probs,1,probNorm)))
-    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
   }
@@ -404,7 +404,7 @@ for(j in 1:nrow(NNP))
       )
     }
     probs<-log2(t(apply(probs,1,probNorm)))
-    probs[is.infinite(probs)]<-min(probs[is.finite(probs)])
+    probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
                 sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
   }
