@@ -15,13 +15,29 @@ library(dplyr)
 library(tidyr)
 
 # Phenotype distribution:
-phePrior<-MCMCpack::rdirichlet(1,c(5,5,5))
-pheDistribution<-c(rmultinom(1,60,prob=phePrior))
-pheDN<-cumsum(2*pheDistribution)
+phePriorTrain<-MCMCpack::rdirichlet(1,c(5,5,5))
+phePriorTest<-MCMCpack::rdirichlet(1,c(5,5,5))
+
+pheDistributionTrain<-c(rmultinom(1,60,prob=phePriorTrain))
+pheDistributionTest<-c(rmultinom(1,60,prob=phePriorTest))
+
+pheDistribution<-pheDistributionTrain+pheDistributionTest
+pheDN<-cumsum(pheDistribution)
 
 phe<-factor(c(rep("phe1",pheDistribution[1]),rep("phe2",pheDistribution[2]),
               rep("phe3",pheDistribution[3])))
 mmPhe<-model.matrix(~phe-1,as.data.frame(phe))
+
+# Train phe:
+pheTrain<-factor(c(rep("phe1",pheDistributionTrain[1]),rep("phe2",pheDistributionTrain[2]),
+              rep("phe3",pheDistributionTrain[3])))
+mmPheTrain<-model.matrix(~pheTrain-1,as.data.frame(pheTrain))
+
+# Test phe:
+pheTest<-factor(c(rep("phe1",pheDistributionTest[1]),rep("phe2",pheDistributionTest[2]),
+              rep("phe3",pheDistributionTest[3])))
+mmPheTest<-model.matrix(~pheTest-1,as.data.frame(pheTest))
+
 eta<-.01
 
 # Pathways differentially abundant
@@ -32,7 +48,7 @@ blockMeansPhe3<-rexp(perBlocksPhe3,rate=1/2)*sample(c(-1,1),perBlocksPhe3,replac
 
 #Baseline / Phe 1 data:
 sigmas<-replicate(25,genPositiveDefMat(40,covMethod="c-vine",eta=eta)$Sigma,simplify=FALSE)
-metabs<-lapply(sigmas,function(x) mvrnorm(n=3*40,mu=rep(0,40),Sigma=x))
+metabs<-lapply(sigmas,function(x) mvrnorm(n=120,mu=rep(0,40),Sigma=x))
 metabs<-do.call(cbind,metabs)
 colnames(metabs)<-paste("m",as.vector(t(outer(1:25,1:40,paste,sep="."))),sep=".")
 
@@ -43,7 +59,7 @@ permPhe2$end<-permPhe2$start+39
 for(i in 1:perBlocksPhe2)
 {
   metabs[(pheDN[1]+1):(pheDN[2]),permPhe2$start[i]:permPhe2$end[i]]<-
-    mvrnorm(n=2*pheDistribution[2],mu=rep(blockMeansPhe2[i],40),Sigma=sigmas[[whichBlocksPhe2[i]]])
+    mvrnorm(n=pheDistribution[2],mu=rep(blockMeansPhe2[i],40),Sigma=sigmas[[whichBlocksPhe2[i]]])
 }
 
 #Phe 3 data:
@@ -53,7 +69,7 @@ permPhe3$end<-permPhe3$start+39
 for(i in 1:perBlocksPhe3)
 {
   metabs[(pheDN[2]+1):(pheDN[3]),permPhe3$start[i]:permPhe3$end[i]]<-
-    mvrnorm(n=2*pheDistribution[3],mu=rep(blockMeansPhe3[i],40),Sigma=sigmas[[whichBlocksPhe3[i]]])
+    mvrnorm(n=pheDistribution[3],mu=rep(blockMeansPhe3[i],40),Sigma=sigmas[[whichBlocksPhe3[i]]])
 }
 
 # Add outlier clusters within replicate
@@ -121,13 +137,13 @@ minImp<-function(x)
 }
 metabs<-apply(metabs,2,FUN=minImp)
 
-rownames(metabs)<-c(paste(rep("phe1",2*pheDistribution[1]),1:(2*pheDistribution[1]),sep="."),
-  paste(rep("phe2",2*pheDistribution[2]),1:(2*pheDistribution[2]),sep="."),
-  paste(rep("phe3",2*pheDistribution[3]),1:(2*pheDistribution[3]),sep="."))
-
-trainRows<-c(paste(rep("phe1",pheDistribution[1]),1:(pheDistribution[1]),sep="."),
+rownames(metabs)<-c(paste(rep("phe1",pheDistribution[1]),1:(pheDistribution[1]),sep="."),
   paste(rep("phe2",pheDistribution[2]),1:(pheDistribution[2]),sep="."),
   paste(rep("phe3",pheDistribution[3]),1:(pheDistribution[3]),sep="."))
+
+trainRows<-c(paste(rep("phe1",pheDistributionTrain[1]),1:(pheDistributionTrain[1]),sep="."),
+  paste(rep("phe2",pheDistributionTrain[2]),1:(pheDistributionTrain[2]),sep="."),
+  paste(rep("phe3",pheDistributionTrain[3]),1:(pheDistributionTrain[3]),sep="."))
 
 train<-metabs[rownames(metabs) %in% trainRows,]
 test<-metabs[!rownames(metabs) %in% trainRows,]
@@ -137,7 +153,7 @@ varNames<-colnames(train)
 pFun<-function(x)
 {
   return(na.omit(
-    c(pairwise.wilcox.test(x=train[,x],g=phe,p.adjust.method="none")$p.value)))
+    c(pairwise.wilcox.test(x=train[,x],g=pheTrain,p.adjust.method="none")$p.value)))
 }
 gr<-do.call("rbind",lapply(varNames,pFun))
 gr<-data.frame(sig=apply(gr,1,function(x) x[1]<.025 | x[2]<.025 | x[3]<.025))
@@ -149,8 +165,8 @@ testSig<-test[,colnames(test)%in%gr$metab]
 cvF<-cvFolds(n=nrow(train),K=5)
 
 ############ Naive Bayes ############
-NB<-naiveBayes(train,phe)
-NBSig<-naiveBayes(trainSig,phe)
+NB<-naiveBayes(train,pheTrain)
+NBSig<-naiveBayes(trainSig,pheTrain)
 
 ############ k-NN ############
 # Full:
@@ -161,17 +177,17 @@ for(j in 1:nrow(knnP))
   for(i in 1:5)
   {
     KNN<-knn(train=train[cvF$subsets[cvF$which!=i],],test=train[cvF$subsets[cvF$which==i],],
-             cl=phe[cvF$subsets[cvF$which!=i]],k=knnP$nn[j],prob=TRUE)
+             cl=pheTrain[cvF$subsets[cvF$which!=i]],k=knnP$nn[j],prob=TRUE)
     probs<-attr(KNN,"prob")
     probs<-log2(probs*model.matrix(~KNN-1,data.frame(phe=KNN)))
     probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
-                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+                sum(-mmPheTrain[cvF$subsets[cvF$which==i],]*probs))
   }
   knnP$CELoss[j]<-mean(CELoss)
 }
 knnNN<-knnP$nn[which.min(knnP$CELoss)]
-KNN<-knn(train,test,cl=phe,k=knnNN,prob=TRUE)
+KNN<-knn(train,test,cl=pheTrain,k=knnNN,prob=TRUE)
 
 # Filtered
 for(j in 1:nrow(knnP))
@@ -180,17 +196,17 @@ for(j in 1:nrow(knnP))
   for(i in 1:5)
   {
     KNNSig<-knn(train=trainSig[cvF$subsets[cvF$which!=i],],test=trainSig[cvF$subsets[cvF$which==i],],
-                cl=phe[cvF$subsets[cvF$which!=i]],k=knnP$nn[j],prob=TRUE)
+                cl=pheTrain[cvF$subsets[cvF$which!=i]],k=knnP$nn[j],prob=TRUE)
     probs<-attr(KNNSig,"prob")
     probs<-log2(probs*model.matrix(~KNNSig-1,data.frame(phe=KNNSig)))
     probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
-                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+                sum(-mmPheTrain[cvF$subsets[cvF$which==i],]*probs))
   }
   knnP$CELoss[j]<-mean(CELoss)
 }
 knnNN<-knnP$nn[which.min(knnP$CELoss)]
-KNNSig<-knn(train,test,cl=phe,k=knnNN,prob=TRUE)
+KNNSig<-knn(train,test,cl=pheTrain,k=knnNN,prob=TRUE)
 
 ############ PLS-DA ############
 # Full
@@ -200,17 +216,17 @@ for(j in 1:nrow(plsdaP))
   CELoss<-c()
   for(i in 1:5)
   {
-    Plsda<-plsda(train[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
+    Plsda<-plsda(train[cvF$subsets[cvF$which!=i],],pheTrain[cvF$subsets[cvF$which!=i]],
                  ncomp=plsdaP$nComp[j])
     probs<-log2(predict(Plsda,train[cvF$subsets[cvF$which==i],],type="prob")[,,1])
     probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
-                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+                sum(-mmPheTrain[cvF$subsets[cvF$which==i],]*probs))
   }
   plsdaP$CELoss[j]<-mean(CELoss)
 }
 plsdaNComp<-plsdaP$nComp[which.min(plsdaP$CELoss)]
-Plsda<-plsda(train,phe,ncomp=plsdaNComp)
+Plsda<-plsda(train,pheTrain,ncomp=plsdaNComp)
 predPlsda<-predict(Plsda,newdata=test,type="prob")
 
 # Filtered
@@ -220,17 +236,17 @@ for(j in 1:nrow(plsdaP))
   CELoss<-c()
   for(i in 1:5)
   {
-    PlsdaSig<-plsda(trainSig[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
+    PlsdaSig<-plsda(trainSig[cvF$subsets[cvF$which!=i],],pheTrain[cvF$subsets[cvF$which!=i]],
                     ncomp=plsdaP$nComp[j])
     probs<-log2(predict(PlsdaSig,trainSig[cvF$subsets[cvF$which==i],],type="prob")[,,1])
     probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
-                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+                sum(-mmPheTrain[cvF$subsets[cvF$which==i],]*probs))
   }
   plsdaP$CELoss[j]<-mean(CELoss)
 }
 plsdaNComp<-plsdaP$nComp[which.min(plsdaP$CELoss)]
-PlsdaSig<-plsda(trainSig,phe,ncomp=plsdaNComp)
+PlsdaSig<-plsda(trainSig,pheTrain,ncomp=plsdaNComp)
 predPlsdaSig<-predict(PlsdaSig,newdata=testSig,type="prob")
 
 ############ SPLS-DA ############
@@ -241,18 +257,18 @@ for(j in 1:nrow(splsdaP))
   CELoss<-c()
   for(i in 1:5)
   {
-    Splsda<-caret:::splsda(train[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
+    Splsda<-caret:::splsda(train[cvF$subsets[cvF$which!=i],],pheTrain[cvF$subsets[cvF$which!=i]],
                            eta=splsdaP$eta[j],K=splsdaP$nComp[j])
     probs<-log2(predict(Splsda,train[cvF$subsets[cvF$which==i],],type="prob"))
     probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
-                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+                sum(-mmPheTrain[cvF$subsets[cvF$which==i],]*probs))
   }
   splsdaP$CELoss[j]<-mean(CELoss)
 }
 selEta<-splsdaP$eta[which.min(splsdaP$CELoss)]
 selNComp<-splsdaP$nComp[which.min(splsdaP$CELoss)]
-Splsda<-splsda(train,phe,eta=selEta,K=selNComp)
+Splsda<-splsda(train,pheTrain,eta=selEta,K=selNComp)
 
 # Filtered:
 for(j in 1:nrow(splsdaP))
@@ -260,18 +276,18 @@ for(j in 1:nrow(splsdaP))
   CELoss<-c()
   for(i in 1:5)
   {
-    SplsdaSig<-caret:::splsda(trainSig[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
+    SplsdaSig<-caret:::splsda(trainSig[cvF$subsets[cvF$which!=i],],pheTrain[cvF$subsets[cvF$which!=i]],
                               eta=splsdaP$eta[j],K=splsdaP$nComp[j])
     probs<-log2(predict(SplsdaSig,trainSig[cvF$subsets[cvF$which==i],],type="prob"))
     probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
-                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+                sum(-mmPheTrain[cvF$subsets[cvF$which==i],]*probs))
   }
   splsdaP$CELoss[j]<-mean(CELoss)
 }
 selEta<-splsdaP$eta[which.min(splsdaP$CELoss)]
 selNComp<-splsdaP$nComp[which.min(splsdaP$CELoss)]
-SplsdaSig<-splsda(trainSig,phe,eta=selEta,K=selNComp)
+SplsdaSig<-splsda(trainSig,pheTrain,eta=selEta,K=selNComp)
 
 ############ Random Forest ############
 # Full:
@@ -282,19 +298,19 @@ for(j in 1:nrow(rFmtry))
   CELoss<-c()
   for(i in 1:5)
   {
-    rF<-randomForest(train[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
+    rF<-randomForest(train[cvF$subsets[cvF$which!=i],],pheTrain[cvF$subsets[cvF$which!=i]],
                      mtry=rFmtry$mtry[j])
     probs<-log2(predict(rF,train[cvF$subsets[cvF$which==i],],type="prob"))
     probs[is.infinite(probs)]<-log2(1e-64)
-    probs<-probs[,levels(phe)]
+    probs<-probs[,levels(pheTrain)]
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
-                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+                sum(-mmPheTrain[cvF$subsets[cvF$which==i],]*probs))
   }
   rFmtry$CELoss[j]<-mean(CELoss)
 }
 lSmooth<-ksmooth(x=rFmtry$mtry,y=rFmtry$CELoss,bandwidth=150)
 selMtry<-round(lSmooth$x[which.min(lSmooth$y)])
-rF<-randomForest(train,phe,mtry=selMtry)
+rF<-randomForest(train,pheTrain,mtry=selMtry)
 
 # Filtered:
 rFmtry<-data.frame(mtry=round(seq(2,ncol(trainSig),length=25)),CELoss=NA)
@@ -303,19 +319,19 @@ for(j in 1:nrow(rFmtry))
   CELoss<-c()
   for(i in 1:5)
   {
-    rFSig<-randomForest(trainSig[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
+    rFSig<-randomForest(trainSig[cvF$subsets[cvF$which!=i],],pheTrain[cvF$subsets[cvF$which!=i]],
                         mtry=rFmtry$mtry[j])
     probs<-log2(predict(rFSig,trainSig[cvF$subsets[cvF$which==i],],type="prob"))
     probs[is.infinite(probs)]<-log2(1e-64)
-    probs<-probs[,levels(phe)]
+    probs<-probs[,levels(pheTrain)]
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
-                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+                sum(-mmPheTrain[cvF$subsets[cvF$which==i],]*probs))
   }
   rFmtry$CELoss[j]<-mean(CELoss)
 }
 lSmooth<-ksmooth(x=rFmtry$mtry,y=rFmtry$CELoss,bandwidth=10)
 selMtry<-round(lSmooth$x[which.min(lSmooth$y)])
-rFSig<-randomForest(trainSig,phe,mtry=selMtry)
+rFSig<-randomForest(trainSig,pheTrain,mtry=selMtry)
 
 ############ SVM ############
 # Full:
@@ -325,13 +341,13 @@ for(j in 1:nrow(svmP))
   CELoss<-c()
   for(i in 1:5)
   {
-    SVM<-svm(train[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
+    SVM<-svm(train[cvF$subsets[cvF$which!=i],],pheTrain[cvF$subsets[cvF$which!=i]],
              gamma=svmP$gamma[j],kernel="radial",probability=TRUE)
     probs<-log2(attr(predict(SVM,train[cvF$subsets[cvF$which==i],],probability=TRUE),"probabilities"))
     probs[is.infinite(probs)]<-log2(1e-64)
-    probs<-probs[,levels(phe)]
+    probs<-probs[,levels(pheTrain)]
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
-                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+                sum(-mmPheTrain[cvF$subsets[cvF$which==i],]*probs))
   }
   svmP$CELoss[j]<-mean(CELoss)
   print(j)
@@ -340,7 +356,7 @@ for(j in 1:nrow(svmP))
 #points(ksmooth(x=log10(svmP$gamma),y=svmP$CELoss,bandwidth=1/25),type="l",col="red")
 lSmooth<-ksmooth(x=log10(svmP$gamma),y=svmP$CELoss,bandwidth=1/25)
 selSVMP<-10**lSmooth$x[which.min(lSmooth$y)]
-SVM<-svm(train,phe,gamma=selSVMP,kernel="radial",probability=TRUE)
+SVM<-svm(train,pheTrain,gamma=selSVMP,kernel="radial",probability=TRUE)
 
 # Filtered:
 svmP<-data.frame(gamma=10**(seq(-4,0,length=1000)),CELoss=NA)
@@ -349,13 +365,13 @@ for(j in 1:nrow(svmP))
   CELoss<-c()
   for(i in 1:5)
   {
-    SVMSig<-svm(trainSig[cvF$subsets[cvF$which!=i],],phe[cvF$subsets[cvF$which!=i]],
+    SVMSig<-svm(trainSig[cvF$subsets[cvF$which!=i],],pheTrain[cvF$subsets[cvF$which!=i]],
                 gamma=svmP$gamma[j],kernel="radial",probability=TRUE)
     probs<-log2(attr(predict(SVMSig,trainSig[cvF$subsets[cvF$which==i],],probability=TRUE),"probabilities"))
     probs[is.infinite(probs)]<-log2(1e-64)
-    probs<-probs[,levels(phe)]
+    probs<-probs[,levels(pheTrain)]
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
-                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+                sum(-mmPheTrain[cvF$subsets[cvF$which==i],]*probs))
   }
   svmP$CELoss[j]<-mean(CELoss)
   print(j)
@@ -364,15 +380,15 @@ for(j in 1:nrow(svmP))
 #points(ksmooth(x=log10(svmP$gamma),y=svmP$CELoss,bandwidth=1/25),type="l",col="red")
 lSmooth<-ksmooth(x=log10(svmP$gamma),y=svmP$CELoss,bandwidth=1/25)
 selSVMP<-10**lSmooth$x[which.min(lSmooth$y)]
-SVMSig<-svm(trainSig,phe,gamma=selSVMP,kernel="radial",probability=TRUE)
+SVMSig<-svm(trainSig,pheTrain,gamma=selSVMP,kernel="radial",probability=TRUE)
 
 ############ Neural Network #############
 probNorm<-function(x) exp(x)/sum(exp(x))
 
-DfTrain<-as.data.frame(cbind(mmPhe,train))
-DfTest<-as.data.frame(cbind(mmPhe,test))
-DfTrainSig<-as.data.frame(cbind(mmPhe,trainSig))
-DfTestSig<-as.data.frame(cbind(mmPhe,testSig))
+DfTrain<-as.data.frame(cbind(mmPheTrain,train))
+DfTest<-as.data.frame(cbind(mmPheTest,test))
+DfTrainSig<-as.data.frame(cbind(mmPheTrain,trainSig))
+DfTestSig<-as.data.frame(cbind(mmPheTest,testSig))
 
 # Full 
 NNP<-expand.grid(layers=1:2,nodes=seq(15,100,5),CELoss=NA)
@@ -383,11 +399,11 @@ for(j in 1:nrow(NNP))
   for(i in 1:5)
   {
     cat("Full i: ",i," structure:",rep(NNP$nodes[j],times=NNP$layers[j]),"\n")
-    tempDfTrain<-as.data.frame(cbind(mmPhe[cvF$subsets[cvF$which!=i],],
+    tempDfTrain<-as.data.frame(cbind(mmPheTrain[cvF$subsets[cvF$which!=i],],
                                      train[cvF$subsets[cvF$which!=i],]))
-    tempDfTest<-as.data.frame(cbind(mmPhe[cvF$subsets[cvF$which==i],],
+    tempDfTest<-as.data.frame(cbind(mmPheTrain[cvF$subsets[cvF$which==i],],
                                     train[cvF$subsets[cvF$which==i],]))
-    tempForm<-as.formula(paste("phephe1+phephe2+phephe3",
+    tempForm<-as.formula(paste("pheTrainphe1+pheTrainphe2+pheTrainphe3",
                                paste(names(tempDfTrain)[!grepl("phe",names(tempDfTrain))],collapse="+"),sep="~"))
     
     attempt<-0
@@ -410,7 +426,7 @@ for(j in 1:nrow(NNP))
     probs<-log2(t(apply(probs,1,probNorm)))
     probs[is.infinite(probs)]<-log2(1e-64)
     CELoss<-c(CELoss,1/length(cvF$subsets[cvF$which==i])*
-                sum(-mmPhe[cvF$subsets[cvF$which==i],]*probs))
+                sum(-mmPheTrain[cvF$subsets[cvF$which==i],]*probs))
   }
   NNP$CELoss[j]<-mean(CELoss)
 }
@@ -439,11 +455,11 @@ for(j in 1:nrow(NNP))
   for(i in 1:5)
   {
     cat("Filtered i: ",i," structure:",rep(NNP$nodes[j],times=NNP$layers[j]),"\n")
-    tempDfTrain<-as.data.frame(cbind(mmPhe[cvF$subsets[cvF$which!=i],],
+    tempDfTrain<-as.data.frame(cbind(mmPheTrain[cvF$subsets[cvF$which!=i],],
                                      trainSig[cvF$subsets[cvF$which!=i],]))
-    tempDfTest<-as.data.frame(cbind(mmPhe[cvF$subsets[cvF$which==i],],
+    tempDfTest<-as.data.frame(cbind(mmPheTrain[cvF$subsets[cvF$which==i],],
                                     trainSig[cvF$subsets[cvF$which==i],]))
-    tempForm<-as.formula(paste("phephe1+phephe2+phephe3",
+    tempForm<-as.formula(paste("pheTrainphe1+pheTrainphe2+pheTrainphe3",
                                paste(names(tempDfTrain)[!grepl("phe",names(tempDfTrain))],collapse="+"),sep="~"))
     
     attempt<-0
@@ -538,8 +554,8 @@ for(method in unique(res$method))
 }
 
 # Misclassification:
-res$pred<-levels(phe)[apply(res %>% select(-method),1,which.max)]
-res$act<-rep(phe,times=14)
+res$pred<-levels(pheTrain)[apply(res %>% select(-method),1,which.max)]
+res$act<-rep(pheTest,times=14)
 res$mis<-as.numeric(res$pred!=res$act)
 misRes<-res %>% group_by(method) %>% summarize(mis=mean(mis))
 
