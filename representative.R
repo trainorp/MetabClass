@@ -41,9 +41,9 @@ mmPheTest<-model.matrix(~pheTest-1,as.data.frame(pheTest))
 eta<-.01
 
 # Pathways differentially abundant
-perBlocksPhe2<-sample(1:5,1)
+perBlocksPhe2<-sample(2:6,1)
 blockMeansPhe2<-rexp(perBlocksPhe2,rate=1/2)*sample(c(-1,1),perBlocksPhe2,replace=TRUE)
-perBlocksPhe3<-sample(1:5,1)
+perBlocksPhe3<-sample(2:6,1)
 blockMeansPhe3<-rexp(perBlocksPhe3,rate=1/2)*sample(c(-1,1),perBlocksPhe3,replace=TRUE)
 
 #Baseline / Phe 1 data:
@@ -156,7 +156,7 @@ pFun<-function(x)
     c(pairwise.wilcox.test(x=train[,x],g=pheTrain,p.adjust.method="none")$p.value)))
 }
 gr<-do.call("rbind",lapply(varNames,pFun))
-gr<-data.frame(sig=apply(gr,1,function(x) x[1]<.025 | x[2]<.025 | x[3]<.025))
+gr<-data.frame(sig=apply(gr,1,function(x) x[1]<.015 | x[2]<.015 | x[3]<.015))
 rownames(gr)<-gr$metab<-varNames
 gr<-gr %>% filter(sig)
 trainSig<-train[,colnames(train)%in%gr$metab]
